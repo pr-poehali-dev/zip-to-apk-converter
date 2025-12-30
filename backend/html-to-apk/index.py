@@ -59,6 +59,18 @@ def handler(event: dict, context) -> dict:
         zip_data = base64.b64decode(zip_content.split(',')[1] if ',' in zip_content else zip_content)
         icon_data = base64.b64decode(icon_content.split(',')[1] if ',' in icon_content else icon_content)
         
+        has_index = validate_and_prepare_html(zip_data)
+        if not has_index['valid']:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'error': has_index['error']}),
+                'isBase64Encoded': False
+            }
+        
         apk_result = build_webview_apk(app_name, app_version, zip_data, icon_data)
         
         if apk_result['success']:
@@ -95,6 +107,35 @@ def handler(event: dict, context) -> dict:
             },
             'body': json.dumps({'error': f'Server error: {str(e)}'}),
             'isBase64Encoded': False
+        }
+
+
+def validate_and_prepare_html(zip_data: bytes) -> dict:
+    """
+    Проверяет наличие index.html в корне архива
+    """
+    try:
+        zip_buffer = BytesIO(zip_data)
+        with zipfile.ZipFile(zip_buffer, 'r') as zip_ref:
+            file_list = zip_ref.namelist()
+            
+            has_index = any(
+                name == 'index.html' or name.endswith('/index.html') and name.count('/') == 1
+                for name in file_list
+            )
+            
+            if not has_index:
+                return {
+                    'valid': False,
+                    'error': 'Архив должен содержать файл index.html в корне'
+                }
+            
+            return {'valid': True}
+    
+    except Exception as e:
+        return {
+            'valid': False,
+            'error': f'Ошибка чтения архива: {str(e)}'
         }
 
 
