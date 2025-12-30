@@ -110,6 +110,12 @@ const Index = () => {
         })
       });
 
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Сервер вернул неверный формат данных. Ожидался JSON, получен: ${contentType || 'unknown'}`);
+      }
+
       const result = await response.json();
       
       if (!response.ok) {
