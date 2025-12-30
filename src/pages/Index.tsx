@@ -54,6 +54,15 @@ const Index = () => {
     }
   };
 
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+
   const handleConvert = async () => {
     if (!zipFile || !iconFile || !appName || !appVersion) {
       toast({
@@ -75,37 +84,65 @@ const Index = () => {
         }
         return prev + 10;
       });
-    }, 300);
+    }, 500);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      const zipBase64 = await fileToBase64(zipFile);
+      const iconBase64 = await fileToBase64(iconFile);
+      
+      const func2url = await fetch('/func2url.json').then(r => r.json());
+      const apiUrl = func2url['html-to-apk'];
+      
+      if (!apiUrl) {
+        throw new Error('Backend функция не найдена');
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          appName,
+          appVersion,
+          zipFile: zipBase64,
+          iconFile: iconBase64
+        })
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Ошибка конвертации');
+      }
       
       setProgress(100);
+      clearInterval(progressInterval);
+      
+      const apkData = result.apkFile;
+      const fileName = result.fileName || `${appName.replace(/\s+/g, '_')}_v${appVersion}.apk`;
+      
+      const link = document.createElement('a');
+      link.href = `data:application/vnd.android.package-archive;base64,${apkData}`;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       
       toast({
         title: "Успешно!",
-        description: "APK-файл готов к скачиванию"
+        description: "APK-файл скачивается"
       });
 
-      setTimeout(() => {
-        const link = document.createElement('a');
-        link.href = '#';
-        link.download = `${appName.replace(/\s+/g, '_')}_v${appVersion}.apk`;
-        toast({
-          title: "Внимание",
-          description: "Это демо-версия. Для реальной конвертации требуется серверная обработка."
-        });
-      }, 500);
-
     } catch (error) {
+      clearInterval(progressInterval);
       toast({
         variant: "destructive",
         title: "Ошибка конвертации",
-        description: "Попробуйте снова"
+        description: error instanceof Error ? error.message : "Попробуйте снова"
       });
     } finally {
       setIsConverting(false);
-      clearInterval(progressInterval);
     }
   };
 
